@@ -1,0 +1,115 @@
+import os
+
+# To run locally:
+# snakemake --snakefile Snakefile_simulate_test --keep-going --cores 10 --use-singularity --singularity-prefix ~/.singularity --singularity-args "--home ~"
+#
+# To run on maestro:
+# source ~/.bashrc && conda activate snakemake && module load apptainer && cd /pasteur/helix/projects/mPath/<path to this project>
+# snakemake --snakefile Snakefile_simulate_test --keep-going --cores 1 --use-singularity --singularity-prefix $HOME/.singularity --singularity-args "-B /pasteur" --cluster "sbatch -c {threads} -o {folder}/logs/{params.name}.log -e {folder}/logs/{params.name}.log --mem={params.mem} -p common,dedicated --qos=fast  -J {params.name}" --jobs 500
+
+localrules: all
+
+folder = os.path.abspath(config.get("folder", '.'))
+
+# If we are on the cluster create log folder
+if "pasteur" in folder:
+    os.makedirs('logs', exist_ok=True)
+
+N = int(config.get("num", 10))
+sim_folder = os.path.join(folder, config.get("sf", 'test'))
+
+TREES_PER_FILE = 1
+
+snakemake_settings = "  --rerun-triggers mtime --keep-going --cores 1 --jobs 500 --rerun-incomplete --cluster  \"sbatch -c {threads} -o {folder}/logs/{params.name}.log -e {folder}/logs/{params.name}.log --mem={params.mem} -p common,dedicated --qos=fast  -J {params.name}\"  --use-singularity --singularity-prefix \"$HOME/.singularity\" --singularity-args \"-B /pasteur\" " \
+    if "pasteur" in folder else " --rerun-triggers mtime --keep-going --cores 12 --use-singularity --singularity-prefix ~/.singularity --singularity-args \"--home ~\""
+
+
+rule all:
+    input:
+        expand(os.path.join(sim_folder, '100_300', 'tree.{i}.nwk'), i=range(N)),
+        # comment the following line if the BDEI parameter estimation is not needed
+        expand(os.path.join(sim_folder, '100_300', 'tree.{i}.est_bdei'), i=range(N)),
+
+
+rule simulate_trees:
+    output:
+        log=os.path.join(sim_folder, '{mint}_{maxt}', 'tree.{i}.log'),
+        nwk=os.path.join(sim_folder, '{mint}_{maxt}', 'tree.{i}.nwk'),
+    params:
+        mem=2000,
+        name='sim_test',
+        qos='fast',
+    threads: 1
+    singularity: "docker://evolbioinfo/bdext:v0.1.66"
+    shell:
+        """         
+        python3 generate_tree_sets.py \
+        --log {output.log} \
+        --nwk {output.nwk} \
+        --min_tips {wildcards.mint} \
+        --max_tips {wildcards.maxt} \
+        --n {TREES_PER_FILE} \
+        --min_RVH 0.5 \
+        --max_RVH 5.0 \
+        --min_RHV 0.5 \
+        --max_RHV 5.0 \
+        --min_MUV 0.08 \
+        --max_MUV 0.17 \
+        --min_MUH 0.10 \
+        --max_MUH 1.0 \
+        --min_PSIV 0.05 \
+        --max_PSIV 0.10 \
+        --min_PSIH 0.20 \
+        --max_PSIH 0.50 \
+        --min_RHO 0.001 \
+        --max_RHO 0.10 
+        """
+
+
+rule estimate_params_bd:
+    '''
+    Estimate parameters with a BD model.
+    '''
+    input:
+        log=os.path.join(sim_folder, '{size}', 'tree.{i}.log'),
+        nwk=os.path.join(sim_folder, '{size}', 'tree.{i}.nwk'),
+    output:
+        est = os.path.join(sim_folder, '{size}', 'tree.{i}.est_bd'),
+    params:
+        mem = 2000,
+        name = 'bd',
+        qos = 'fast'
+    threads: 1
+    singularity: "docker://evolbioinfo/bdct:v0.1.25"
+    shell:
+        """
+        p=`awk -F, ' NR == 1 {{ for (i = 1; i <= $NF; i++) {{ if ($i == "p") {{ col = i; break }} }} }} NR == 2 {{ print $col }} ' {input.log}`
+
+        bd_infer --p $p  --nwk {input.nwk} --log {output.est} --ci
+        """
+
+
+rule estimate_params_bdei:
+    '''
+    Estimate parameters with a BDEI model.
+    '''
+    input:
+        log=os.path.join(sim_folder, '{size}', 'tree.{i}.log'),
+        nwk=os.path.join(sim_folder, '{size}', 'tree.{i}.nwk'),
+        bd_est = os.path.join(sim_folder, '{size}', 'tree.{i}.est_bd'),
+    output:
+        est = os.path.join(sim_folder, '{size}',  'tree.{i}.est_bdei'),
+    params:
+        mem = 2000,
+        name = 'bdei{i}',
+        qos = 'fast'
+    threads: 2
+    singularity: "docker://evolbioinfo/bdei:v0.13"
+    shell:
+        """
+        p=`awk -F, ' NR == 1 {{ for (i = 1; i <= $NF; i++) {{ if ($i == "p") {{ col = i; break }} }} }} NR == 2 {{ print $col }} ' {input.log}`
+        la=`awk -F, 'NR==2 {{ print $5 }}' {input.bd_est}`
+        psi=`awk -F, 'NR==2 {{ print $6 }}' {input.bd_est}`
+
+        bdei_infer --p $p  --nwk {input.nwk} --log {output.est} -c 100 --start $psi $la $psi $p --threads {threads} 
+        """
