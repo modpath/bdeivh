@@ -4,7 +4,7 @@ import os
 # snakemake --snakefile Snakefile_simulate_test --keep-going --cores 10 --use-singularity --singularity-prefix ~/.singularity --singularity-args "--home ~"
 #
 # To run on maestro:
-# source ~/.bashrc && conda activate snakemake && module load apptainer && cd /pasteur/helix/projects/mPath/<path to this project>
+# module load snakemake && module load apptainer && cd /pasteur/helix/projects/mPath/ighor/bdeivh
 # snakemake --snakefile Snakefile_simulate_test --keep-going --cores 1 --use-singularity --singularity-prefix $HOME/.singularity --singularity-args "-B /pasteur" --cluster "sbatch -c {threads} -o {folder}/logs/{params.name}.log -e {folder}/logs/{params.name}.log --mem={params.mem} -p common,dedicated --qos=fast  -J {params.name}" --jobs 500
 
 localrules: all
@@ -19,9 +19,6 @@ N = int(config.get("num", 10))
 sim_folder = os.path.join(folder, config.get("sf", 'test'))
 
 TREES_PER_FILE = 1
-
-snakemake_settings = "  --rerun-triggers mtime --keep-going --cores 1 --jobs 500 --rerun-incomplete --cluster  \"sbatch -c {threads} -o {folder}/logs/{params.name}.log -e {folder}/logs/{params.name}.log --mem={params.mem} -p common,dedicated --qos=fast  -J {params.name}\"  --use-singularity --singularity-prefix \"$HOME/.singularity\" --singularity-args \"-B /pasteur\" " \
-    if "pasteur" in folder else " --rerun-triggers mtime --keep-going --cores 12 --use-singularity --singularity-prefix ~/.singularity --singularity-args \"--home ~\""
 
 
 rule all:
