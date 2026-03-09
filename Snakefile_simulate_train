@@ -1,0 +1,78 @@
+import os
+
+# To run locally:
+# snakemake --snakefile Snakefile_simulate_train --keep-going --cores 10 --use-singularity --singularity-prefix ~/.singularity --singularity-args "--home ~"
+#
+# To run on maestro:
+# source ~/.bashrc && conda activate snakemake && module load apptainer && cd /pasteur/helix/projects/mPath/<path to this project>
+# snakemake --snakefile Snakefile_simulate_train --keep-going --cores 1 --use-singularity --singularity-prefix $HOME/.singularity --singularity-args "-B /pasteur" --cluster "sbatch -c {threads} -o {folder}/logs/{params.name}.log -e {folder}/logs/{params.name}.log --mem={params.mem} -p common,dedicated --qos=fast -J {params.name}" --jobs 500
+
+localrules: all
+
+folder = os.path.abspath(config.get("folder", '.'))
+
+# If we are on the cluster create log folder
+if "pasteur" in folder:
+    os.makedirs('logs', exist_ok=True)
+
+N = int(config.get("num", 100))
+NUM_SUBFOLDERS = 100
+TREES_PER_FILE = 10
+
+sim_folder = os.path.join(folder, config.get("sf", 'train'))
+
+snakemake_settings = (
+    " --rerun-triggers mtime --keep-going --cores 1 --jobs 500 --rerun-incomplete "
+    "--cluster \"sbatch -c {threads} -o {folder}/logs/{params.name}.log "
+    "-e {folder}/logs/{params.name}.log --mem={params.mem} -p common,dedicated "
+    "--qos=fast -J {params.name}\" --use-singularity "
+    "--singularity-prefix \"$HOME/.singularity\" --singularity-args \"-B /pasteur\" "
+    if "pasteur" in folder
+    else
+    " --rerun-triggers mtime --keep-going --cores 12 --use-singularity "
+    "--singularity-prefix ~/.singularity --singularity-args \"--home ~\""
+)
+
+rule all:
+    input:
+        expand(
+            os.path.join(sim_folder, '100_300', 'set_{j}', 'tree.{i}.nwk'),
+            i=range(N),
+            j=range(NUM_SUBFOLDERS)
+        )
+
+rule simulate_trees:
+    output:
+        log=os.path.join(sim_folder, '{mint}_{maxt}', 'set_{j}', 'tree.{i}.log'),
+        nwk=os.path.join(sim_folder, '{mint}_{maxt}', 'set_{j}', 'tree.{i}.nwk'),
+    params:
+        mem=2000,
+        name='sim_test',
+        qos='fast',
+    threads: 1
+    singularity: "docker://evolbioinfo/bdext:v0.1.66"
+    shell:
+        """
+        mkdir -p $(dirname {output.log})
+
+        python3 generate_tree_sets.py \
+        --log {output.log} \
+        --nwk {output.nwk} \
+        --min_tips {wildcards.mint} \
+        --max_tips {wildcards.maxt} \
+        --n {TREES_PER_FILE} \
+        --min_RVH 0.5 \
+        --max_RVH 5.0 \
+        --min_RHV 0.5 \
+        --max_RHV 5.0 \
+        --min_MUV 0.08 \
+        --max_MUV 0.17 \
+        --min_MUH 0.10 \
+        --max_MUH 1.0 \
+        --min_PSIV 0.10 \
+        --max_PSIV 1.0 \
+        --min_PSIH 0.20 \
+        --max_PSIH 0.50 \
+        --min_RHO 0.001 \
+        --max_RHO 0.10
+        """
