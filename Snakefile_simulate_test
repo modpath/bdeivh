@@ -15,7 +15,7 @@ folder = os.path.abspath(config.get("folder", '.'))
 if "pasteur" in folder:
     os.makedirs('logs', exist_ok=True)
 
-N = int(config.get("num", 10))
+N = int(config.get("num", 1000))
 sim_folder = os.path.join(folder, config.get("sf", 'test'))
 
 TREES_PER_FILE = 1
@@ -46,22 +46,15 @@ rule simulate_trees:
         --min_tips {wildcards.mint} \
         --max_tips {wildcards.maxt} \
         --n {TREES_PER_FILE} \
-        --min_RVH 0.5 \
-        --max_RVH 5.0 \
-        --min_RHV 0.5 \
-        --max_RHV 5.0 \
-        --min_MUV 0.08 \
-        --max_MUV 0.17 \
-        --min_MUH 0.10 \
-        --max_MUH 1.0 \
-        --min_PSIV 0.05 \
-        --max_PSIV 0.10 \
-        --min_PSIH 0.20 \
-        --max_PSIH 0.50 \
-        --min_RHO 0.001 \
-        --max_RHO 0.10 
+        --min_RHH 1.0 \
+        --max_RHH 5.0 \
+        --min_DV 10.0\
+        --max_DV 22.0\
+        --min_DH 3.0\
+        --max_DH 15.0\
+        --min_RHO 0.02 \
+        --max_RHO 0.20
         """
-
 
 rule estimate_params_bd:
     '''
