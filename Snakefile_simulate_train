@@ -1,11 +1,11 @@
 import os
 
 # To run locally:
-# snakemake --snakefile Snakefile_simulate_train --keep-going --cores 10 --use-singularity --singularity-prefix ~/.singularity --singularity-args "--home ~"
+# snakemake --snakefile bdeivh_1_snakefile_simulate_train --keep-going --cores 10 --use-singularity --singularity-prefix ~/.singularity --singularity-args "--home ~"
 #
 # To run on maestro:
 # source ~/.bashrc && conda activate snakemake && module load apptainer && cd /pasteur/helix/projects/mPath/<path to this project>
-# snakemake --snakefile Snakefile_simulate_train --keep-going --cores 1 --use-singularity --singularity-prefix $HOME/.singularity --singularity-args "-B /pasteur" --cluster "sbatch -c {threads} -o {folder}/logs/{params.name}.log -e {folder}/logs/{params.name}.log --mem={params.mem} -p common,dedicated --qos=fast -J {params.name}" --jobs 500
+# snakemake --snakefile Snakefile_simulate_train --keep-going --cores 1 --use-singularity --singularity-prefix $HOME/.singularity --singularity-args "-B /pasteur" --cluster "sbatch -c {threads} -o {folder}/logs/{params.name}.log -e {folder}/logs/{params.name}.log --mem={params.mem} --qos=normal -J {params.name}" --jobs 500
 
 localrules: all
 
@@ -36,7 +36,7 @@ snakemake_settings = (
 rule all:
     input:
         expand(
-            os.path.join(sim_folder, '100_300', 'set_{j}', 'tree.{i}.nwk'),
+            os.path.join(sim_folder, '150_250', 'set_{j}', 'tree.{i}.nwk'),
             i=range(N),
             j=range(NUM_SUBFOLDERS)
         )
@@ -55,24 +55,18 @@ rule simulate_trees:
         """
         mkdir -p $(dirname {output.log})
 
-        python3 generate_tree_sets.py \
+        python3 Generate_tree_sets.py \
         --log {output.log} \
         --nwk {output.nwk} \
         --min_tips {wildcards.mint} \
         --max_tips {wildcards.maxt} \
         --n {TREES_PER_FILE} \
-        --min_RVH 0.5 \
-        --max_RVH 5.0 \
-        --min_RHV 0.5 \
-        --max_RHV 5.0 \
-        --min_MUV 0.08 \
-        --max_MUV 0.17 \
-        --min_MUH 0.10 \
-        --max_MUH 1.0 \
-        --min_PSIV 0.10 \
-        --max_PSIV 1.0 \
-        --min_PSIH 0.20 \
-        --max_PSIH 0.50 \
-        --min_RHO 0.001 \
-        --max_RHO 0.10
+        --min_RHH 1.0 \
+        --max_RHH 5.0 \
+        --min_DV 10.0\
+        --max_DV 20.0\
+        --min_DH 3.0\
+        --max_DH 15.0\
+        --min_RHO 0.01 \
+        --max_RHO 0.50
         """

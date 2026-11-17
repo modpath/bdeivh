@@ -1,0 +1,76 @@
+import os
+
+# To run locally:
+# snakemake --snakefile Snakefile_merge_OROV_test --keep-going --cores 1 --use-singularity --singularity-prefix ~/.singularity --singularity-args "--home ~"
+# To run on maestro:
+# source ~/.bashrc && conda activate snakemake && module load apptainer && cd /pasteur/helix/projects/mPath/anna/projects/bdext/sim_bdeiss
+# snakemake --snakefile Snakefile_merge_OROV_test --keep-going --cores 1 --use-singularity --singularity-prefix $HOME/.singularity --singularity-args "-B /pasteur" --cluster "sbatch -c {threads} -o {folder}/logs/{params.name}.log -e {folder}/logs/{params.name}.log --mem={params.mem} -p common,dedicated --qos=fast  -J {params.name}" --jobs 8000 --config sf=orov_test
+
+localrules: all
+
+folder = os.path.abspath(config.get("folder", '.'))
+
+num = int(config.get("num", 1000))
+REPETITIONS = list(range(num))
+
+os.makedirs('logs', exist_ok=True)
+tf = config.get("sf", 'orov_test')
+
+mint = int(config.get("mint", 250))
+maxt = int(config.get("maxt", 350))
+
+test_folder = os.path.join(
+folder,
+"OROV_test",
+f'{mint}_{maxt}')
+
+TREES_PER_FILE = 1
+
+snakemake_settings = "  --rerun-triggers mtime --keep-going --cores 1 --jobs 500 --rerun-incomplete --cluster  \"sbatch -c {threads} -o {folder}/logs/{params.name}.log -e {folder}/logs/{params.name}.log --mem={params.mem} -p common,dedicated --qos=fast  -J {params.name}\"  --use-singularity --singularity-prefix \"$HOME/.singularity\" --singularity-args \"-B /pasteur\" " \
+    if "pasteur" in folder else " --rerun-triggers mtime --keep-going --cores 12 --use-singularity --singularity-prefix ~/.singularity --singularity-args \"--home ~\""
+
+rule all:
+    input:
+        os.path.join(test_folder, '250_350_test_merged_all_OROV.nwk'),
+        os.path.join(test_folder, '250_350_test_merged_all_OROV.log')
+
+rule merge_all:
+    input:
+        nwks = expand(os.path.join(test_folder, 'tree.{k}.nwk'),
+        k = REPETITIONS,
+        ),
+
+        logs = expand(os.path.join(test_folder, 'tree.{k}.log'),
+        k = REPETITIONS,
+        )
+
+    output:
+        nwks = os.path.join(test_folder, '250_350_test_merged_all_OROV.nwk'),
+        logs = os.path.join(test_folder, '250_350_test_merged_all_OROV.log')
+
+    params:
+        name = "merge_all_OROV_test",
+        mem=2000,
+        qos='fast'
+
+    threads: 1
+    shell:
+        """         
+        for f in {input.nwks}; do
+            cat "$f"
+            echo
+        done > {output.nwks}
+        
+        first=1
+
+        for f in {input.logs}; do
+            if [ $first -eq 1 ]; then
+                # print header + rest of the file
+                cat "$f"
+                first=0
+            else
+                # skip header (NR>1)
+                tail -n +2 "$f"
+            fi
+        done > {output.logs}
+        """

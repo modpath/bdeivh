@@ -1,108 +1,106 @@
 import os
 
-
-# To run locally:
-# snakemake --snakefile Snakefile_encode --keep-going --cores 1 --rerun-triggers mtime
-# snakemake --snakefile Snakefile_encode --keep-going --cores 1 --use-singularity --singularity-prefix ~/.singularity --singularity-args "--home ~"
-
-# To run on maestro:
-# source ~/.bashrc && conda activate snakemake && module load apptainer && cd /pasteur/helix/projects/mPath/anna/projects/bdext/sim_bdeiss
-# snakemake --snakefile Snakefile_encode --keep-going --cores 1 --rerun-triggers mtime --use-singularity --singularity-prefix $HOME/.singularity --singularity-args "-B /pasteur" --cluster "sbatch -c {threads} -o {folder}/logs/{params.name}.log -e {folder}/logs/{params.name}.log --mem={params.mem} -p common,dedicated --qos=fast  -J {params.name}" --jobs 1000
-
-
+# Inner workflow: one job per stage, processing trees in their original order.
+# The external training workflow supplies the Slurm CPU/memory allocation.
 localrules: all
 
-os.makedirs('logs',exist_ok=True)
+folder = os.path.abspath(config.get("folder", ".."))
+in_nwk = os.path.abspath(config["in_nwk"])
+out_nwk = os.path.abspath(config["out_nwk"])
+TREES_PER_FILE = int(config.get("trees_per_file", 10))
+if TREES_PER_FILE < 1:
+    raise ValueError("trees_per_file must be positive")
 
-folder = config.get('folder','..')
+WORKDIR = in_nwk + ".phylogenies"
+log_dir = os.path.abspath(config.get("log_dir", os.path.join(WORKDIR, "logs")))
+PHYLOGENIES = [os.path.join(WORKDIR, "phylogeny.{}.nwk".format(i))
+               for i in range(TREES_PER_FILE)]
+DATES = [os.path.join(WORKDIR, "dates.{}.tab".format(i))
+         for i in range(TREES_PER_FILE)]
+TIMETREES = [os.path.join(WORKDIR, "timetree.{}.nexus".format(i))
+             for i in range(TREES_PER_FILE)]
 
-in_nwk = config["in_nwk"]
-out_nwk = config['out_nwk']
-
-TREES_PER_FILE = 10 * 100
 
 rule all:
     input:
         out_nwk
 
-rule tt2phylogeny:
-    '''
-    Transforms a bunch of transmission trees into phylogenies.
 
-    We will only put the last tree as an output in order not to overwhelm the scheduler, 
-    but the script will output one file per tree.
-    '''
+rule tt2phylogeny:
     input:
-        nwk=in_nwk,
+        nwk=in_nwk
     output:
-        nwk=os.path.join(f'{in_nwk}.phylogenies',f'phylogeny.{TREES_PER_FILE - 1}.nwk'),
-        dates=os.path.join(f'{in_nwk}.phylogenies',f'dates.{TREES_PER_FILE - 1}.tab')
+        # Declare every intermediate, not just tree 9.
+        nwk=PHYLOGENIES,
+        dates=DATES
+    log:
+        os.path.join(log_dir, "tt2phylogeny.log")
     params:
         mem=2000,
-        name='tt2p',
-        qos='fast',
-        nwk=os.path.join(f'{in_nwk}.phylogenies','phylogeny.*.nwk'),
-        dates=os.path.join(f'{in_nwk}.phylogenies','dates.*.tab')
+        name="tt2p",
+        qos="fast",
+        script=os.path.join(folder, "transmission2phylogeny.py"),
+        nwk=os.path.join(WORKDIR, "phylogeny.*.nwk"),
+        dates=os.path.join(WORKDIR, "dates.*.tab")
     threads: 1
-    singularity: "docker://evolbioinfo/python-evol:v3.8.2b"
+    singularity: "docker://evolbioinfo/bdext:v0.1.80"
     shell:
+        r"""
+        mkdir -p {WORKDIR:q}
+        python3 {params.script:q} --in_nwk {input.nwk:q} \
+            --out_nwk {params.nwk:q} --out_dates {params.dates:q} \
+            --mean_R 0.0012 --std_R 0.000075 --time_scale day \
+            --min_date 10 --max_date 12 --s 11873 > {log:q} 2>&1
         """
-        python3 {folder}/transmission2phylogeny.py --in_nwk {input.nwk} --out_nwk '{params.nwk}' --out_dates '{params.dates}' \
-        --mean_R 0.0008 --std_R 0.0004 --time_scale day --min_date 10 --max_date 12 \
-        --s 29903
-        """
+
 
 rule date_lsd2:
-    '''
-    Dates a phylogeny with LSD2.
-    '''
     input:
-        nwk=os.path.join(f'{in_nwk}.phylogenies',f'phylogeny.{TREES_PER_FILE - 1}.nwk'),
-        dates=os.path.join(f'{in_nwk}.phylogenies',f'dates.{TREES_PER_FILE - 1}.tab')
+        nwk=PHYLOGENIES,
+        dates=DATES
     output:
-        nexus=os.path.join(f'{in_nwk}.phylogenies',f'timetree.{TREES_PER_FILE - 1}.nexus'),
-    threads: 1
-    singularity: "docker://evolbioinfo/lsd2:v2.4.1"
+        nexus=TIMETREES
+    log:
+        os.path.join(log_dir, "date_lsd2.log")
     params:
         mem=4000,
-        name='lsd2',
-        qos='fast',
-        nwk=os.path.join(f'{in_nwk}.phylogenies','phylogeny.$i.nwk'),
-        nexus=os.path.join(f'{in_nwk}.phylogenies','timetree.$i.nexus'),
-        dates=os.path.join(f'{in_nwk}.phylogenies','dates.$i.tab'),
-        wd=os.path.join(f'{in_nwk}.phylogenies','wd.$i.wd')
+        name="lsd2",
+        qos="fast"
+    threads: 1
+    singularity: "docker://evolbioinfo/lsd2:v2.4.1"
     shell:
-        """
-        N={TREES_PER_FILE}
-
-        for i in $(seq 0 $((N-1))); do
-            echo "Processing tree.$i"
-
-            lsd2 -i {params.nwk} -d {params.dates} -s 29903 -o {params.wd} -R 24 -l 0
-
-            mv {params.wd}.date.nexus {params.nexus}
-            rm -rf {params.wd}*
-        done
+        r"""
+        (
+            cd {WORKDIR:q}
+            for ((i=0; i<{TREES_PER_FILE}; i++)); do
+                echo "Processing tree.$i"
+                lsd2 -i "phylogeny.$i.nwk" -d "dates.$i.tab" \
+                    -s 11873 -o "wd.$i.wd" -R 24 -l 0
+                test -s "wd.$i.wd.date.nexus"
+                mv -- "wd.$i.wd.date.nexus" "timetree.$i.nexus"
+                rm -f -- "wd.$i.wd"*
+            done
+        ) > {log:q} 2>&1
         """
 
 
 rule nex2nwk:
-    '''
-    Transforms a bunch of nexus trees into a newick file.
-    '''
     input:
-        nexus=os.path.join(f'{in_nwk}.phylogenies',f'timetree.{TREES_PER_FILE - 1}.nexus'),
+        nexus=TIMETREES
     output:
         nwk=out_nwk
+    log:
+        os.path.join(log_dir, "nex2nwk.log")
     params:
         mem=2000,
-        name='nex2nwk',
-        qos='fast',
-        nexus=[os.path.join(f'{in_nwk}.phylogenies',f'timetree.{i}.nexus') for i in range(TREES_PER_FILE)]
+        name="nex2nwk",
+        qos="fast",
+        script=os.path.join(folder, "nex2nwk.py")
     threads: 1
-    singularity: "docker://evolbioinfo/bdext:v0.1.79"
+    singularity: "docker://evolbioinfo/bdext:v0.1.80"
     shell:
+        r"""
+        python3 {params.script:q} --in_nexus {input.nexus:q} \
+            --out_nwk {output.nwk:q} > {log:q} 2>&1
+        test -s {output.nwk:q}
         """
-        python3 {folder}/nex2nwk.py --in_nexus {params.nexus} --out_nwk {output.nwk}
-        """
-

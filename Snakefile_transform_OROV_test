@@ -1,6 +1,5 @@
 import os
 
-
 # To run locally:
 # snakemake --snakefile Snakefile_transform_OROV_test --keep-going --cores 1 --rerun-triggers mtime
 # snakemake --snakefile Snakefile_transform_OROV_test --keep-going --cores 1 --use-singularity --singularity-prefix ~/.singularity --singularity-args "--home ~"
@@ -16,12 +15,16 @@ folder = os.path.abspath(config.get("folder",'.'))
 REPETITIONS = list(range(1000))
 os.makedirs('logs',exist_ok=True)
 
-mint = int(config.get("mint",100))
-maxt = int(config.get("maxt",300))
+mint = int(config.get("mint",250))
+maxt = int(config.get("maxt",350))
 SIZE = '{}_{}'.format(mint,maxt)
 
 cf = config.get("cf", 'OROV_test')
-sim_folder = os.path.join(folder,config.get("sf",'test'),SIZE)
+sim_folder = os.path.join(
+    folder,
+    "test",
+    f"{mint}_{maxt}"
+)
 OROV_folder = os.path.join(folder,cf,SIZE)
 
 snakemake_settings = "  --rerun-triggers mtime --keep-going --cores 1 --jobs 8000 --rerun-incomplete --cluster  \"sbatch -c {threads} -o {folder}/logs/{params.name}.log -e {folder}/logs/{params.name}.log --mem={params.mem} -p common,dedicated --qos=fast  -J {params.name}\"  --use-singularity --singularity-prefix \"$HOME/.singularity\" --singularity-args \"-B /pasteur\" " \
@@ -30,7 +33,6 @@ snakemake_settings = "  --rerun-triggers mtime --keep-going --cores 1 --jobs 800
 rule all:
     input:
         expand(os.path.join(OROV_folder,'tree.{i}.nwk'), i=REPETITIONS)
-
 
 rule tt2phylogeny:
     '''
@@ -52,8 +54,8 @@ rule tt2phylogeny:
     shell:
         """
         python3 transmission2phylogeny.py --in_nwk {input.nwk} --out_nwk {output.nwk} --out_dates {output.dates} \
-        --mean_R 0.0008 --std_R 0.0004 --time_scale day --min_date 10 --max_date 12 \
-        --s 29903
+        --mean_R 0.0012 --std_R 0.000075 --time_scale day --min_date 10 --max_date 12 \
+        --s 11873
 
         cp {input.log} {output.log}
         """
@@ -76,12 +78,11 @@ rule date_lsd2:
         qos='fast'
     shell:
         """
-        lsd2 -i {input.nwk} -d {input.dates} -s 29903 -o {params.wd} -R 24 -l 0
+        lsd2 -i {input.nwk} -d {input.dates} -s 11873 -o {params.wd} -R 24 -l 0
 
         mv "{params.wd}.date.nexus" "{output.nexus}"
         rm -rf "{params.wd}*"
         """
-
 
 rule nex2nwk:
     '''
@@ -101,4 +102,3 @@ rule nex2nwk:
         """
         python3 nex2nwk.py --in_nexus {input.nexus} --out_nwk {output.nwk}
         """
-

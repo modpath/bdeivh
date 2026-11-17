@@ -5,9 +5,7 @@ import numpy as np
 from collections import Counter
 
 MONTH = 'month'
-
 DAY = 'day'
-
 YEAR = 'year'
 
 def read_forest(tree_path):
@@ -15,7 +13,6 @@ def read_forest(tree_path):
         nwks = f.read().replace('\n', '').split(';')
     for nwk in nwks[:-1]:
         yield Tree(nwk + ';')
-
 
 def datetime2numeric(d):
     """
@@ -31,8 +28,6 @@ def datetime2numeric(d):
     first_jan_next_year = datetime(year=d.year + 1, month=1, day=1)
     days_in_this_year = first_jan_next_year - first_jan_this_year
     return d.year + day_of_this_year / days_in_this_year
-
-
 
 def numeric2datetime(d):
     """
@@ -56,7 +51,7 @@ def numeric2datetime(d):
         day_of_this_year -= days_in_m
 
 
-def discretize_branch_lengths(tree, R_mean=0.0008, R_std=0.0004, s=29903):
+def discretize_branch_lengths(tree, R_mean=0.0012, R_std=0.000075, s=11873):
     """
     Timetree-to-genetic tree converter.
 
@@ -173,13 +168,12 @@ if __name__ == "__main__":
     parser.add_argument('--out_dates', type=str, help="pattern for output date files")
     parser.add_argument('--in_nwk', type=str, help="input transmission trees")
     parser.add_argument('--out_nwk', type=str, help="pattern for output phylogenetic trees")
-
-    parser.add_argument('--mean_R', default=0.0008, type=float, help="mean substitution rate [substitutions/site/year]")
-    parser.add_argument('--std_R', default=0.0004, type=float, help="std of the substitution rate")
+    parser.add_argument('--mean_R', default=0.0012, type=float, help="mean substitution rate [substitutions/site/year]")
+    parser.add_argument('--std_R', default=0.000075, type=float, help="std of the substitution rate")
     parser.add_argument('--min_date', default=10, type=float, help="min root date [in tree time units] (included)")
     parser.add_argument('--max_date', default=12, type=float, help="max root datee [in tree time units] (excluded)")
     parser.add_argument('--time_scale', default=DAY, choices=(DAY, MONTH, YEAR), help="time unit of the input tree")
-    parser.add_argument('--s', default=29903, type=int, help="alignment length (number of sites)")
+    parser.add_argument('--s', default=11873, type=int, help="alignment length (number of sites)")
 
     params = parser.parse_args()
     for i, tree in enumerate(read_forest(params.in_nwk)):
