@@ -18,26 +18,29 @@ import os
 import sys
 import argparse
 import warnings
-import inspect
 import tempfile
 import numpy as np
 import pandas as pd
 from tensorflow.keras.models import model_from_json
 from keras.src.saving import serialization_lib
+
+from bdeihv.Phylocnn_Encoding import process_tree
+
 serialization_lib.enable_unsafe_deserialization()
 
 from ete3 import Tree
-import PhyloCNN_Encoding
 
 warnings.filterwarnings("ignore")
 sys.setrecursionlimit(100000)
 
-DEFAULT_MODEL_JSON = "./trained_models/30_50_OROV_OROV_trained_BDEIVH.json"
-DEFAULT_MODEL_WEIGHTS = "./trained_models/30_50_OROV_OROV_trained_BDEIVH.weights.h5"
-
 TARGET_COLS = ["Rvh", "Rhv", "Rhh", "d_v", "d_h", "v2h_ratio"]
 QUANTILES = ("lower", "median", "upper")
 COLS_TO_RESCALE = ["d_v", "d_h"]
+
+MODEL_DIR = os.path.join(os.path.dirname(__file__), 'models')
+
+OROV = 'OROV'
+TRANSMISSION = 'TRANSMISSION'
 
 
 def genomic_tree_rescaling(original_tree, tree_scale):
@@ -95,55 +98,6 @@ def encode_pad_0s_rootage_single(enc, max_len=400):
         enc_pad.append(np.stack((leaves, nodes), axis=2))
 
     return np.array(enc_pad, dtype="float32")
-
-
-def run_phylocnn_encoder(tree_file, output_file):
-    """Run the local PhyloCNN encoder.
-
-    Your local PhyloCNN_Encoding.py exposes process_tree, not encode_tree_file.
-    This helper still supports a few common signatures to make the script robust.
-    """
-    if not hasattr(PhyloCNN_Encoding, "process_tree"):
-        public_names = [x for x in dir(PhyloCNN_Encoding) if not x.startswith("_")]
-        raise AttributeError(
-            "PhyloCNN_Encoding.process_tree was not found. Available public names are:\n"
-            + "\n".join(f"  - {name}" for name in public_names)
-        )
-
-    process_tree = PhyloCNN_Encoding.process_tree
-    sig = inspect.signature(process_tree)
-    params = list(sig.parameters)
-
-    try:
-        if "tree_file" in params and "output_file" in params:
-            return process_tree(tree_file=tree_file, output_file=output_file)
-
-        if "input_file" in params and "output_file" in params:
-            return process_tree(input_file=tree_file, output_file=output_file)
-
-        if "tree" in params and "output_file" in params:
-            return process_tree(tree=tree_file, output_file=output_file)
-
-        if len(params) >= 2:
-            return process_tree(tree_file, output_file)
-
-        if len(params) == 1:
-            result = process_tree(tree_file)
-            if isinstance(result, pd.DataFrame):
-                result.to_csv(output_file, sep="\t", index=True)
-                return None
-            if isinstance(result, np.ndarray):
-                pd.DataFrame(result).to_csv(output_file, sep="\t", index=True)
-                return None
-            return result
-
-        raise TypeError(f"Unsupported process_tree signature: {sig}")
-
-    except TypeError as exc:
-        raise TypeError(
-            f"Could not call PhyloCNN_Encoding.process_tree with signature {sig}.\n"
-            f"Original error: {exc}"
-        ) from exc
 
 
 def load_encoded_tree(encoded_file):
@@ -335,7 +289,7 @@ def truncate_tree_geometrically(original_tree, cutoff_days):
     return tree
 
 
-def select_temporal_model(n_tips, model_dir="./trained_models", model_prefix="OROV_OROV"):
+def select_temporal_model(n_tips, model_dir=MODEL_DIR, tree_type=OROV):
     """Return (label, json_path, weights_path) for a tree-size-specific model."""
     selected = None
 
@@ -351,11 +305,11 @@ def select_temporal_model(n_tips, model_dir="./trained_models", model_prefix="OR
 
     model_json = os.path.join(
         model_dir,
-        f"{selected}_{model_prefix}_trained_BDEIVH.json",
+        f"{selected}_{tree_type}_BDEIVH.json",
     )
     model_weights = os.path.join(
         model_dir,
-        f"{selected}_{model_prefix}_trained_BDEIVH.weights.h5",
+        f"{selected}_{tree_type}_BDEIVH.weights.h5",
     )
 
     return selected, model_json, model_weights
@@ -373,7 +327,7 @@ def predict_tree_object(
     encoded_file = os.path.join(workdir, f"{prefix}.tsv")
 
     tree.write(outfile=tree_file, format=1)
-    run_phylocnn_encoder(tree_file=tree_file, output_file=encoded_file)
+    encode_tree(tree_file, encoded_file)
 
     enc_real, resc_factor_real = load_encoded_tree(encoded_file)
     enc_real = add_sampling_probability(enc_real, sampling_probability)
@@ -383,13 +337,20 @@ def predict_tree_object(
     return predictions_to_dataframe(pred, resc_factor_real)
 
 
+def encode_tree(tree_file: str, encoded_file: str):
+    result = process_tree(tree_file)
+    if isinstance(result, pd.DataFrame):
+        result.to_csv(encoded_file, sep="\t", index=True)
+    if isinstance(result, np.ndarray):
+        pd.DataFrame(result).to_csv(encoded_file, sep="\t", index=True)
+
+
 def predict_every_n_days(
     original_tree,
     sampling_probability,
     step_days=7.0,
-    mode="observed",
-    model_dir="./trained_models",
-    model_prefix="OROV_OROV",
+    model_dir=MODEL_DIR,
+    tree_type=OROV,
     include_final=True,
 ):
     """Predict BDEIVH parameters from sequential time slices of one tree.
@@ -404,14 +365,10 @@ def predict_every_n_days(
         prediction script. This function assumes p is constant through time.
     step_days : float, default=7
         Interval between successive cutoffs measured from the root.
-    mode : {"observed", "geometric"}
-        ``observed`` keeps only samples collected by each cutoff (recommended
-        for real-time retrospective inference). ``geometric`` literally cuts
-        branches at each time slice and creates artificial tips.
     model_dir : str
         Directory containing the four tree-size-specific trained models.
-    model_prefix : str
-        Middle part of the model filename, e.g. ``OROV_OROV``.
+    tree_type : str
+        Type of tree being analyzed (e.g., 'OROV' or 'TRANSMISSION').
     include_final : bool
         Also analyse the full-tree height when it is not an exact multiple of
         ``step_days``.
@@ -425,8 +382,6 @@ def predict_every_n_days(
     """
     if step_days <= 0:
         raise ValueError("step_days must be > 0.")
-    if mode not in {"observed", "geometric"}:
-        raise ValueError("mode must be 'observed' or 'geometric'.")
     if not 0 <= sampling_probability <= 1:
         raise ValueError("sampling_probability must be between 0 and 1.")
 
@@ -441,10 +396,7 @@ def predict_every_n_days(
 
     with tempfile.TemporaryDirectory(prefix="phylocnn_temporal_") as workdir:
         for idx, cutoff in enumerate(cutoffs, start=1):
-            if mode == "observed":
-                cut_tree = prune_tree_to_observed_tips(original_tree, cutoff)
-            else:
-                cut_tree = truncate_tree_geometrically(original_tree, cutoff)
+            cut_tree = prune_tree_to_observed_tips(original_tree, cutoff)
 
             if cut_tree is None:
                 rows.append({
@@ -459,7 +411,7 @@ def predict_every_n_days(
             model_info = select_temporal_model(
                 n_tips=n_tips,
                 model_dir=model_dir,
-                model_prefix=model_prefix,
+                tree_type=tree_type,
             )
 
             if model_info is None:
@@ -522,7 +474,7 @@ def main():
         description="Prepare a genomic tree and predict epidemiological parameters with prediction intervals."
     )
     parser.add_argument(
-        "-ts", "--tree_scale", required=True, type=int,
+        "-ts", "--tree_scale", default=1, type=int,
         help="Date scale used in the supplied tree: 0 = days, 1 = years."
     )
     parser.add_argument("-t", "--tree", required=True, help="Tree file in .nwk format.")
@@ -531,12 +483,8 @@ def main():
         help="Sampling probability p."
     )
     parser.add_argument(
-        "--model_json", default=DEFAULT_MODEL_JSON,
-        help="Path to model JSON file."
-    )
-    parser.add_argument(
-        "--model_weights", default=DEFAULT_MODEL_WEIGHTS,
-        help="Path to model H5 weights file."
+        "--tree_type", default=OROV, type=str, choices=(OROV, TRANSMISSION),
+        help="Type of tree: OROV = Oropouche-like trees, TRANSMISSION = perfectly resolved transmission trees."
     )
     parser.add_argument(
         "--keep_intermediate", action="store_true",
@@ -551,16 +499,8 @@ def main():
         help="Temporal interval in days when --temporal is used (default: 7)."
     )
     parser.add_argument(
-        "--temporal_mode", choices=("observed", "geometric"), default="observed",
-        help="Temporal tree construction: observed tips only (recommended) or geometric slicing."
-    )
-    parser.add_argument(
-        "--model_dir", default="./trained_models",
-        help="Directory containing size-specific models used by --temporal."
-    )
-    parser.add_argument(
-        "--model_prefix", default="OROV_OROV",
-        help="Model filename prefix component used by --temporal (default: OROV_OROV)."
+        "--model_dir", default=MODEL_DIR,
+        help="Directory containing pretrained models."
     )
 
     args = parser.parse_args()
@@ -581,9 +521,8 @@ def main():
             original_tree=scaled_tree,
             sampling_probability=args.sampling_probability,
             step_days=args.step_days,
-            mode=args.temporal_mode,
             model_dir=args.model_dir,
-            model_prefix=args.model_prefix,
+            tree_type=args.tree_type,
             include_final=True,
         )
         temporal_predictions.to_csv(prediction_output, index=False)
@@ -591,20 +530,32 @@ def main():
         print(f"\nSaved temporal predictions to: {prediction_output}")
         return
 
+    model_info = select_temporal_model(
+        n_tips=len(scaled_tree),
+        model_dir=args.model_dir,
+        tree_type=args.tree_type,
+    )
+
+    if model_info is None:
+        raise ValueError(
+            f"Tree has {len(scaled_tree)} tips, which is outside the trained ranges (30-350)."
+        )
+
+    _, model_json, model_weights = model_info
+
     # Save the rescaled tree before calling the encoder.
     scaled_tree.write(outfile=rescaled_output, format=1)
 
-    # Your local PhyloCNN_Encoding.py uses process_tree.
-    run_phylocnn_encoder(
+    encode_tree(
         tree_file=rescaled_output,
-        output_file=encoded_output,
+        encoded_file=encoded_output,
     )
 
     predicted = predict_parameters(
         encoded_file=encoded_output,
         sampling_probability=args.sampling_probability,
-        model_json_file=args.model_json,
-        model_weights_file=args.model_weights,
+        model_json_file=model_json,
+        model_weights_file=model_weights,
     )
 
     print_predictions_summary(predicted)

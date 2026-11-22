@@ -1,0 +1,62 @@
+import os
+localrules: all
+
+folder = os.path.abspath(config.get("folder", "."))
+
+NUM_TREES = int(config.get("trees", 100))
+NUM_SUBFOLDERS = int(config.get("folders", 100))
+TREES_PER_FILE = int(config.get("treesperfile", 10))
+mint = int(config.get("mint", 250))
+maxt = int(config.get("maxt", 350))
+sf = config.get("sf", 'train')
+cf = config.get("cf", 'OROV_train')
+SIZE = "{}_{}".format(mint, maxt)
+
+sim_folder = os.path.join(folder, sf, SIZE)
+OROV_folder = os.path.join(folder, cf, SIZE)
+
+
+
+snakemake_settings = "  --rerun-triggers mtime --keep-going --cores 1 --jobs 500 --rerun-incomplete --cluster  \"sbatch -c {threads} -o {folder}/logs/{params.name}.log -e {folder}/logs/{params.name}.log --mem={params.mem} -p common --qos=normal  -J {params.name}\"  --use-singularity --singularity-prefix \"$HOME/.singularity\" --singularity-args \"-B /pasteur\" " \
+    if "pasteur" in folder else " --rerun-triggers mtime --keep-going --cores 12 --use-singularity --singularity-prefix ~/.singularity --singularity-args \"--home ~\""
+snakemake_preload =  "module load snakemake/7.32.3 && module load apptainer" if "pasteur" in folder else ""
+
+
+rule all:
+    input:
+        expand(os.path.join(OROV_folder, "set_{j}", "tree.{i}.nwk"), j=range(NUM_SUBFOLDERS), i=range(NUM_TREES)),
+        expand(os.path.join(OROV_folder, "set_{j}", "tree.{i}.log"), j=range(NUM_SUBFOLDERS), i=range(NUM_TREES))
+    shell:
+        """
+        snakemake --snakefile Snakefile_merge_train --config mint={mint} maxt={maxt} trees={NUM_TREES} folders={NUM_SUBFOLDERS} sf={cf} {snakemake_settings} --unlock
+        snakemake --snakefile Snakefile_merge_train --config mint={mint} maxt={maxt} trees={NUM_TREES} folders={NUM_SUBFOLDERS} sf={cf}  {snakemake_settings}
+        """
+
+
+rule tt2OROV:
+    input:
+        nwk=os.path.join(sim_folder, "set_{j}", "tree.{i}.nwk"),
+        log=os.path.join(sim_folder, "set_{j}", "tree.{i}.log")
+    output:
+        nwk=os.path.join(OROV_folder, "set_{j}", "tree.{i}.nwk"),
+        log=os.path.join(OROV_folder, "set_{j}", "tree.{i}.log")
+    params:
+        mem=2000,
+        name='tt2p',
+        qos='fast',
+        tt=os.path.join(sim_folder, "set_{j}"),
+        ct=os.path.join(OROV_folder, "set_{j}"),
+    threads: 1
+    shell:
+        """
+        mkdir -p {params.tt}/{wildcards.i}
+        {snakemake_preload}
+        
+        cd {params.tt}/{wildcards.i}
+        
+        snakemake --snakefile {folder}/Snakefile_transform_OROV --config tt={params.tt} orov={params.ct} folder={folder} work={params.tt}/{wildcards.i} i={wildcards.i} treesperfile={TREES_PER_FILE} {snakemake_settings} --unlock
+        snakemake --snakefile {folder}/Snakefile_transform_OROV --config tt={params.tt} orov={params.ct} folder={folder} work={params.tt}/{wildcards.i} i={wildcards.i} treesperfile={TREES_PER_FILE} {snakemake_settings}
+        
+        cd {folder}
+        rm -rf {params.tt}/{wildcards.i}
+        """

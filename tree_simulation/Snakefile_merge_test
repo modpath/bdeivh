@@ -1,0 +1,69 @@
+import os
+
+localrules: all
+
+os.makedirs('logs', exist_ok=True)
+
+folder = os.path.abspath(config.get("folder", '.'))
+num = int(config.get("num", 1000))
+REPETITIONS = list(range(num))
+mint = int(config.get("mint", 30))
+maxt = int(config.get("maxt", 50))
+sf = config.get("sf", 'test')
+
+test_folder = os.path.join(folder, sf, f'{mint}_{maxt}')
+
+rule all:
+    input:
+        os.path.join(test_folder, 'trees.nwk'),
+        os.path.join(test_folder, 'trees.log'),
+        os.path.join(test_folder, 'trees.tsv.xz')
+
+rule merge:
+    input:
+        nwks = expand(os.path.join(test_folder, 'tree.{k}.nwk'), k=REPETITIONS),
+        logs = expand(os.path.join(test_folder, 'tree.{k}.log'), k=REPETITIONS),
+    output:
+        nwks = os.path.join(test_folder, 'trees.nwk'),
+        logs = os.path.join(test_folder, 'trees.log')
+    params:
+        name = "merge_all_test",
+        mem=2000,
+        qos='fast'
+    threads: 1
+    shell:
+        """         
+        for f in {input.nwks}; do
+            cat "$f"
+            echo
+        done > {output.nwks}
+        
+        first=1
+
+        for f in {input.logs}; do
+            if [ $first -eq 1 ]; then
+                # print header + rest of the file
+                cat "$f"
+                first=0
+            else
+                # skip header (NR>1)
+                tail -n +2 "$f"
+            fi
+        done > {output.logs}
+        """
+
+rule encode:
+    input:
+        nwks = os.path.join(test_folder, 'trees.nwk'),
+    output:
+        tsv = os.path.join(test_folder, 'trees.tsv.xz')
+    params:
+        name = "encode_test",
+        mem=2000,
+        qos='fast'
+    threads: 1
+    singularity: "docker://evolbioinfo/python-evol:v3.8.2b"
+    shell:
+        """
+        python3 Phylocnn_Encoding.py -t {input.nwks} -o {output.tsv}
+        """

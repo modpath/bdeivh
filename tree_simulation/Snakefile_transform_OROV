@@ -1,0 +1,87 @@
+import os
+localrules: all
+
+folder = os.path.abspath(config.get("folder",'.'))
+
+os.makedirs('logs', exist_ok=True)
+
+tt_folder = config.get("tt",'.')
+orov_folder = config.get("orov",'.')
+work_folder = config.get("work",'.')
+i = int(config.get("i",0))
+TREES_PER_FILE = int(config.get("treesperfile", 10))
+
+
+rule all:
+    input:
+        os.path.join(orov_folder, f'tree.{i}.nwk')
+
+
+rule tt2phylogeny:
+    input:
+        nwk=os.path.join(tt_folder,'tree.{i}.nwk'),
+        log=os.path.join(tt_folder,'tree.{i}.log'),
+    output:
+        nwk=expand(os.path.join(work_folder, 'phylogeny.{{i}}.{j}.nwk'), j=range(TREES_PER_FILE)),
+        dates=expand(os.path.join(work_folder, 'dates.{{i}}.{j}.tab'), j=range(TREES_PER_FILE)),
+        log=os.path.join(orov_folder, 'tree.{i}.log'),
+    params:
+        mem=2000,
+        name='tt2p',
+        qos='fast',
+        nwk = os.path.join(work_folder,'phylogeny.{i}.*.nwk'),
+        dates = os.path.join(work_folder,'dates.{i}.*.tab'),
+    threads: 1
+    singularity: "docker://evolbioinfo/python-evol:v3.8.2b"
+    shell:
+        """
+        python3 {folder}/transmission2phylogeny.py --in_nwk {input.nwk} --out_nwk {params.nwk} --out_dates {params.dates} \
+        --mean_R 0.0012 --std_R 0.000075 --time_scale day --min_date 10 --max_date 12 \
+        --s 11873
+
+        cp {input.log} {output.log}
+        """
+
+
+rule date_lsd2:
+    '''
+    Dates a phylogeny with LSD2.
+    '''
+    input:
+        nwk=os.path.join(work_folder,'phylogeny.{ij}.nwk'),
+        dates=os.path.join(work_folder,'dates.{ij}.tab'),
+    output:
+        nexus=os.path.join(work_folder,'tree.{ij}.nexus'),
+    threads: 1
+    singularity: "docker://evolbioinfo/lsd2:v2.4.1"
+    params:
+        mem=4000,
+        name='lsd2',
+        wd=os.path.join(work_folder,'tree.{ij}.wd'),
+        qos='fast'
+    shell:
+        """
+        lsd2 -i {input.nwk} -d {input.dates} -s 11873 -o {params.wd} -R 24 -l 0
+
+        mv "{params.wd}.date.nexus" "{output.nexus}"
+        rm -rf "{params.wd}*"
+        """
+
+rule nex2nwk:
+    '''
+    Transforms a bunch of nexus trees into a newick file.
+    '''
+    input:
+        nexus=expand(os.path.join(work_folder, 'tree.{{i}}.{j}.nexus'), j=range(TREES_PER_FILE)),
+    output:
+        nwk=os.path.join(orov_folder, 'tree.{i}.nwk'),
+    params:
+        mem=2000,
+        name='nex2nwk',
+        qos='fast',
+    threads: 1
+    singularity: "docker://evolbioinfo/python-evol:v3.8.2b"
+    shell:
+        """
+        python3 {folder}/nex2nwk.py --in_nexus {input.nexus} --out_nwk {output.nwk}
+        """

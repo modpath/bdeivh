@@ -1,8 +1,7 @@
-import logging
 import multiprocessing
+import os
 import time
 import numpy as np
-from treesimulator import save_forest
 from treesimulator.generator import generate
 from treesimulator.mtbd_models import Model
 
@@ -55,13 +54,17 @@ def generate_tree(params, pid, results, rep):
     tips = int(rng.integers(params.min_tips, params.max_tips + 1))
 
     # Simulation
-    epidemic = generate([model], min_tips=tips, max_tips=tips)
+    n_generated = 0
+    while n_generated < tips:
+        epidemic = generate([model], max_tips=tips)
+        if epidemic.sampled_tree:
+            n_generated = len(epidemic.sampled_tree)
 
     pis = model.state_frequencies
     R = model.get_avg_R()
     d = model.get_avg_d()
     v2h_ratio = pis[:2].sum() / pis[2:].sum()
-    results[pid] = epidemic.sampled_forest[0], (rvh, rhv, rhh, d_v, d_h, muv, muh, psiv, psih, rho, R, d, v2h_ratio)
+    results[pid] = epidemic.sampled_tree, (rvh, rhv, rhh, d_v, d_h, muv, muh, psiv, psih, rho, R, d, v2h_ratio)
 
 def get_model(laVH, laHV, psiv, psih, rho, muv, muh) -> Model:
     states_vector = np.array(['ve','vi','he','hi'])
@@ -105,7 +108,6 @@ if __name__ == "__main__":
     parser.add_argument('--max_tips', default=50, type=int, help="Maximum number of sampled tips for each generated tree.")
     parser.add_argument('--n', default=1, type=int, help="Number of trees to generate")
     params = parser.parse_args()
-    logging.basicConfig(level=logging.DEBUG)
 
     multiprocessing.set_start_method('spawn', force=True)
     manager = multiprocessing.Manager()
@@ -134,4 +136,9 @@ if __name__ == "__main__":
             d_inf_h = 1 / psih
             f.write(f'{rvh},{rhv},{rhh},{R},{d_v},{d_h},{d_inc_v},{d_inc_h},{d_inf_v},{d_inf_h},{d},{rho},{v2h_ratio},{len(tree)}\n')
             forest.append(tree)
-    save_forest(forest, params.nwk)
+
+    os.makedirs(os.path.dirname(os.path.abspath(params.nwk)), exist_ok=True)
+    with open(params.nwk, 'w+') as f:
+        for tree in forest:
+            f.write(tree.write(format=5, format_root_node=True))
+            f.write('\n')

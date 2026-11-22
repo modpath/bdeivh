@@ -1,34 +1,41 @@
 import os
 
 # To run locally:
-# snakemake --snakefile Snakefile_transform_OROV_calibrate --keep-going --cores 1 --rerun-triggers mtime
-# snakemake --snakefile Snakefile_transform_OROV_calibrate --keep-going --cores 1 --use-singularity --singularity-prefix ~/.singularity --singularity-args "--home ~"
+# snakemake --snakefile Snakefile_transform_OROV_test --keep-going --cores 1 --rerun-triggers mtime
+# snakemake --snakefile Snakefile_transform_OROV_test --keep-going --cores 1 --use-singularity --singularity-prefix ~/.singularity --singularity-args "--home ~"
 
 # To run on maestro:
 # module load snakemake/7.32.3 && module load apptainer && cd/pasteur/helix/projects/mPath/<path to this project>
-# snakemake --snakefile Snakefile_transform_OROV_calibrate --keep-going --cores 1 --rerun-triggers mtime --use-singularity --singularity-prefix $HOME/.singularity --singularity-args "-B /pasteur" --cluster "sbatch -c {threads} -o {folder}/logs/{params.name}.log -e {folder}/logs/{params.name}.log --mem={params.mem} -p common,dedicated --qos=fast  -J {params.name}" --jobs 8000
+# snakemake --snakefile Snakefile_transform_OROV_test --keep-going --cores 1 --rerun-triggers mtime --use-singularity --singularity-prefix $HOME/.singularity --singularity-args "-B /pasteur" --cluster "sbatch -c {threads} -o {folder}/logs/{params.name}.log -e {folder}/logs/{params.name}.log --mem={params.mem} -p common,dedicated --qos=fast  -J {params.name}" --jobs 8000
 
 
 localrules: all
 
 folder = os.path.abspath(config.get("folder",'.'))
-REPETITIONS = list(range(2000))
+
+N = int(config.get("num", 1000))
 os.makedirs('logs',exist_ok=True)
 
 mint = int(config.get("mint",250))
 maxt = int(config.get("maxt",350))
 SIZE = '{}_{}'.format(mint,maxt)
 
-cf = config.get("cf", 'OROV_calibrate')
-sim_folder = os.path.join(folder,config.get("sf",'calibrate'),SIZE)
-OROV_folder = os.path.join(folder,cf,SIZE)
+cf = config.get("cf", 'OROV_test')
+sf = config.get("sf", 'test')
+sim_folder = os.path.join(folder, sf, SIZE)
+OROV_folder = os.path.join(folder, cf, SIZE)
 
 snakemake_settings = "  --rerun-triggers mtime --keep-going --cores 1 --jobs 8000 --rerun-incomplete --cluster  \"sbatch -c {threads} -o {folder}/logs/{params.name}.log -e {folder}/logs/{params.name}.log --mem={params.mem} -p common,dedicated --qos=fast  -J {params.name}\"  --use-singularity --singularity-prefix \"$HOME/.singularity\" --singularity-args \"-B /pasteur\" " \
     if "pasteur" in folder else " --rerun-triggers mtime --keep-going --cores 12 --use-singularity --singularity-prefix ~/.singularity --singularity-args \"--home ~\""
 
 rule all:
     input:
-        expand(os.path.join(OROV_folder,'tree.{i}.nwk'), i=REPETITIONS)
+        expand(os.path.join(OROV_folder, 'tree.{i}.nwk'), i=range(N))
+    shell:
+        """
+        snakemake --snakefile Snakefile_merge_test --config mint={mint} maxt={maxt} num={N} sf={cf} {snakemake_settings} --unlock
+        snakemake --snakefile Snakefile_merge_test --config mint={mint} maxt={maxt} num={N} sf={cf}  {snakemake_settings}
+        """
 
 rule tt2phylogeny:
     '''
@@ -46,7 +53,7 @@ rule tt2phylogeny:
         name='tt2p',
         qos='fast',
     threads: 1
-    singularity: "docker://evolbioinfo/bdext:v0.1.80"
+    singularity: "docker://evolbioinfo/treesimulator:v0.2.30"
     shell:
         """
         python3 transmission2phylogeny.py --in_nwk {input.nwk} --out_nwk {output.nwk} --out_dates {output.dates} \
@@ -93,7 +100,7 @@ rule nex2nwk:
         name='nex2nwk',
         qos='fast',
     threads: 1
-    singularity: "docker://evolbioinfo/bdext:v0.1.80"
+    singularity: "docker://evolbioinfo/python-evol:v3.8.2"
     shell:
         """
         python3 nex2nwk.py --in_nexus {input.nexus} --out_nwk {output.nwk}

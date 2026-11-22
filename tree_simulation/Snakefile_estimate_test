@@ -1,60 +1,28 @@
 import os
 
 # To run locally:
-# snakemake --snakefile Snakefile_simulate_calibrate --keep-going --cores 10 --use-singularity --singularity-prefix ~/.singularity --singularity-args "--home ~"
+# snakemake --snakefile Snakefile_estimate_test --keep-going --cores 10 --use-singularity --singularity-prefix ~/.singularity --singularity-args "--home ~"
 #
 # To run on maestro:
 # module load snakemake && module load apptainer && cd /pasteur/helix/projects/mPath/ighor/bdeivh
-# snakemake --snakefile Snakefile_simulate_calibrate --keep-going --cores 1 --use-singularity --singularity-prefix $HOME/.singularity --singularity-args "-B /pasteur" --cluster "sbatch -c {threads} -o {folder}/logs/{params.name}.log -e {folder}/logs/{params.name}.log --mem={params.mem} -p common,dedicated --qos=fast  -J {params.name}" --jobs 500
+# snakemake --snakefile Snakefile_estimate_test --keep-going --cores 1 --use-singularity --singularity-prefix $HOME/.singularity --singularity-args "-B /pasteur" --cluster "sbatch -c {threads} -o {folder}/logs/{params.name}.log -e {folder}/logs/{params.name}.log --mem={params.mem} --qos=normal  -J {params.name}" --jobs 500
 
 localrules: all
 
+os.makedirs('logs',exist_ok=True)
 folder = os.path.abspath(config.get("folder", '.'))
 
-# If we are on the cluster create log folder
-if "pasteur" in folder:
-    os.makedirs('logs', exist_ok=True)
-
-N = int(config.get("num", 2000))
-sim_folder = os.path.join(folder, config.get("sf", 'calibrate'))
-
-TREES_PER_FILE = 1
+N = int(config.get("num", 1000))
+mint = int(config.get("mint", 250))
+maxt = int(config.get("maxt", 350))
+sf = config.get("sf", 'test')
+sim_folder = os.path.join(folder, sf)
 
 
 rule all:
     input:
-        expand(os.path.join(sim_folder, '250_350', 'tree.{i}.nwk'), i=range(N)),
-        # comment the following line if the BDEI parameter estimation is not needed
-        expand(os.path.join(sim_folder, '250_350', 'tree.{i}.est_bdei'), i=range(N)),
-
-
-rule simulate_trees:
-    output:
-        log=os.path.join(sim_folder, '{mint}_{maxt}', 'tree.{i}.log'),
-        nwk=os.path.join(sim_folder, '{mint}_{maxt}', 'tree.{i}.nwk'),
-    params:
-        mem=2000,
-        name='sim_calibrate',
-        qos='fast',
-    threads: 1
-    singularity: "docker://evolbioinfo/bdext:v0.1.66"
-    shell:
-        """         
-        python3 Generate_tree_sets.py \
-        --log {output.log} \
-        --nwk {output.nwk} \
-        --min_tips {wildcards.mint} \
-        --max_tips {wildcards.maxt} \
-        --n {TREES_PER_FILE} \
-        --min_RHH 1.0 \
-        --max_RHH 5.0 \
-        --min_DV 10.0\
-        --max_DV 20.0\
-        --min_DH 3.0\
-        --max_DH 15.0\
-        --min_RHO 0.01 \
-        --max_RHO 0.50
-        """
+        expand(os.path.join(sim_folder, f'{mint}_{maxt}', 'tree.{i}.est_bdei'), i=range(N)),
+        expand(os.path.join(sim_folder, f'{mint}_{maxt}', 'tree.{i}.est_bd'), i=range(N)),
 
 rule estimate_params_bd:
     '''

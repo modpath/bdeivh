@@ -1,7 +1,7 @@
 import os
 
 # To run locally:
-# snakemake --snakefile bdeivh_1_snakefile_simulate_train --keep-going --cores 10 --use-singularity --singularity-prefix ~/.singularity --singularity-args "--home ~"
+# snakemake --snakefile Snakefile_simulate_train --keep-going --cores 10 --use-singularity --singularity-prefix ~/.singularity --singularity-args "--home ~"
 #
 # To run on maestro:
 # source ~/.bashrc && conda activate snakemake && module load apptainer && cd /pasteur/helix/projects/mPath/<path to this project>
@@ -14,32 +14,28 @@ folder = os.path.abspath(config.get("folder", '.'))
 # If we are on the cluster create log folder
 if "pasteur" in folder:
     os.makedirs('logs', exist_ok=True)
+    snakemake_settings = "  --rerun-triggers mtime --keep-going --cores 1 --jobs 500 --rerun-incomplete --cluster  \"sbatch -c {threads} -o {folder}/logs/{params.name}.log -e {folder}/logs/{params.name}.log --mem={params.mem} -p common --qos=normal  -J {params.name}\"  --use-singularity --singularity-prefix \"$HOME/.singularity\" --singularity-args \"-B /pasteur\" "
+else:
+    snakemake_settings = " --rerun-triggers mtime --keep-going --cores 12 --use-singularity --singularity-prefix ~/.singularity --singularity-args \"--home ~\""
 
-N = int(config.get("num", 100))
-NUM_SUBFOLDERS = 100
-TREES_PER_FILE = 10
 
-sim_folder = os.path.join(folder, config.get("sf", 'train'))
+NUM_TREES = int(config.get("trees", 100))
+NUM_SUBFOLDERS = int(config.get("folders", 100))
+TREES_PER_FILE = int(config.get("treesperfile", 10))
+mint = int(config.get("mint", 250))
+maxt = int(config.get("maxt", 350))
+sf = config.get("sf", 'train')
 
-snakemake_settings = (
-    " --rerun-triggers mtime --keep-going --cores 1 --jobs 500 --rerun-incomplete "
-    "--cluster \"sbatch -c {threads} -o {folder}/logs/{params.name}.log "
-    "-e {folder}/logs/{params.name}.log --mem={params.mem} -p common,dedicated "
-    "--qos=fast -J {params.name}\" --use-singularity "
-    "--singularity-prefix \"$HOME/.singularity\" --singularity-args \"-B /pasteur\" "
-    if "pasteur" in folder
-    else
-    " --rerun-triggers mtime --keep-going --cores 12 --use-singularity "
-    "--singularity-prefix ~/.singularity --singularity-args \"--home ~\""
-)
+sim_folder = os.path.join(folder, sf)
 
 rule all:
     input:
-        expand(
-            os.path.join(sim_folder, '150_250', 'set_{j}', 'tree.{i}.nwk'),
-            i=range(N),
-            j=range(NUM_SUBFOLDERS)
-        )
+        expand(os.path.join(sim_folder, f'{mint}_{maxt}', 'set_{j}', 'tree.{i}.nwk'), i=range(NUM_TREES), j=range(NUM_SUBFOLDERS))
+    shell:
+        """
+        snakemake --snakefile Snakefile_merge_train --config mint={mint} maxt={maxt} trees={NUM_TREES} folders={NUM_SUBFOLDERS} sf={sf} {snakemake_settings} --unlock
+        snakemake --snakefile Snakefile_merge_train --config mint={mint} maxt={maxt} trees={NUM_TREES} folders={NUM_SUBFOLDERS} sf={sf}  {snakemake_settings}
+        """
 
 rule simulate_trees:
     output:
@@ -47,14 +43,12 @@ rule simulate_trees:
         nwk=os.path.join(sim_folder, '{mint}_{maxt}', 'set_{j}', 'tree.{i}.nwk'),
     params:
         mem=2000,
-        name='sim_test',
+        name='sim_train',
         qos='fast',
     threads: 1
-    singularity: "docker://evolbioinfo/bdext:v0.1.66"
+    singularity: "docker://evolbioinfo/treesimulator:v0.2.30"
     shell:
         """
-        mkdir -p $(dirname {output.log})
-
         python3 Generate_tree_sets.py \
         --log {output.log} \
         --nwk {output.nwk} \

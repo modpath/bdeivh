@@ -198,6 +198,7 @@ if __name__ == "__main__":
             if tip.dist <= 0:
                 tip.dist = 0.5  / params.s
 
+        print(f'Writing tree {i} to {params.out_nwk.replace("*", f"{i}")} and dates to {params.out_dates.replace("*", f"{i}")}')
         tree.write(format=3, outfile=params.out_nwk.replace('*', f'{i}'), format_root_node=True)
         with open(params.out_dates.replace('*', f'{i}'), 'w+') as f:
             f.write(f'{len(name2date) + 1}\n')
