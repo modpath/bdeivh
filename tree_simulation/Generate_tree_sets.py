@@ -1,5 +1,6 @@
 import multiprocessing
 import os
+import re
 import time
 import numpy as np
 from treesimulator.generator import generate
@@ -10,9 +11,10 @@ TIMEOUT = int(10 * 60)
 def random_float(rng: np.random.Generator, min_value: float = 0, max_value: float = 1, size=1) -> float:
     return min_value + rng.random(size=None if 1 == size else size) * (max_value - min_value)
 
-def generate_tree(params, pid, results, rep):
+def generate_tree(params, pid, i, results, rep):
 
-    rng = np.random.default_rng(seed=int(time.time()) + (pid * rep))
+    seed = (time.time_ns() + os.getpid() + (i * rep)) % (2**32 - 1)
+    rng = np.random.default_rng(seed=seed)
 
     # Parameter Sampling
 
@@ -109,6 +111,9 @@ if __name__ == "__main__":
     parser.add_argument('--n', default=1, type=int, help="Number of trees to generate")
     params = parser.parse_args()
 
+    indices = [int(_) for _ in re.findall(r'[0-9]+', params.nwk)]
+    i = ((indices[-1] if len(indices) else 0) + 1) * 128 + max(0, indices[-2] if len(indices) > 1 else 0)
+
     multiprocessing.set_start_method('spawn', force=True)
     manager = multiprocessing.Manager()
     return_dict = manager.dict()
@@ -118,7 +123,7 @@ if __name__ == "__main__":
             if pid in return_dict:
                 print(f"Tree {pid} generated successfully.")
                 break
-            p = multiprocessing.Process(target=generate_tree, args=(params, pid, return_dict, rep))
+            p = multiprocessing.Process(target=generate_tree, args=(params, pid, i, return_dict, rep))
             p.start()
             p.join(TIMEOUT)
             if p.is_alive():
