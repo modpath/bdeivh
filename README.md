@@ -100,7 +100,7 @@ The table below summarizes the information about these clusters.
 |----------------|---------|-------------|----------------|
 | [cea.nwk](https://github.com/modpath/bdeivh/tree/main/genomic_clusters/cea.nwk) | CE-2024, Ceará | 86          | 0.396 |
 | [es1.nwk](https://github.com/modpath/bdeivh/tree/main/genomic_clusters/es1.nwk)      | ES-I, Espírito Santo | 123         | 0.016 |
-| [am1.nwk](https://github.com/modpath/bdeivh/tree/main/genomic_clusters/am1.nwk)      | AM-I, Amazonas | 258         | 0.109 */
+| [am1.nwk](https://github.com/modpath/bdeivh/tree/main/genomic_clusters/am1.nwk)      | AM-I, Amazonas | 258         | 0.109 |
 
 
 
@@ -192,10 +192,10 @@ The choice between the pretrained models for **30–49**, **50–149**, **150–
 ### Use with apptainer
 
 Once [apptainer](https://apptainer.org/docs/user/latest/quick_start.html#installation) is installed, 
-run the following command (update the version as needed, here v0.1.0 is used as an example):
+run the following command (update the version as needed, here v0.1.5 is used as an example):
 
 ```bash
-apptainer run docker://evolbioinfo/bdeivh:v0.1.0
+apptainer run docker://evolbioinfo/bdeivh:v0.1.5
 ```
 
 This will launch a terminal session within the container, 
