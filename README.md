@@ -8,6 +8,10 @@ The pretrained estimator accepts a single cluster with 30–350 sampled tips and
 
 Ighor Arantes, Gonzalo Bello, Felipe Gomes Naveca, Edson Delatorre, Antonio Silva Lima Neto, Sebastian Duchene and Anna Zhukova. *Deep Learning-based Phylodynamic Inference of Oropouche Virus Transmission Dynamics in Brazil Between 2023 and 2025*. 
 
+[![PyPI version](https://badge.fury.io/py/bdeivh.svg)](https://pypi.org/project/bdeivh/)
+[//]: # ([![PyPI downloads]&#40;https://shields.io/pypi/dm/bdeivh&#41;]&#40;https://pypi.org/project/bdeivh&#41;)
+[![Docker pulls](https://img.shields.io/docker/pulls/evolbioinfo/bdeivh)](https://hub.docker.com/r/evolbioinfo/bdeivh/tags)
+
 ## BDEIVH model
 
 The Birth-Death Exposed-Infectious Vector-Human (BDEIVH) model is a special case of the Multi-Type Birth-Death model [[Stadler _et al._ 2013]](https://royalsocietypublishing.org/doi/10.1098/rstb.2012.0198).
@@ -69,7 +73,7 @@ The BDEIVH model has the following epidemiological parameters:
 
 ### Pretrained DL BDEIVH estimator
 
-The folder [bdeivh/models](bdeivh/models) contains pretrained BDEIVH estimators for idealistic transmission trees and OROV-like trees 
+The folder [bdeivh/models](https://github.com/modpath/bdeivh/tree/main/bdeivh/models) contains pretrained BDEIVH estimators for idealistic transmission trees and OROV-like trees 
 with 30–49, 50–149, 150–249 and 250–350 tips.
 They were trained under the following BDEIVH parameter ranges, where U stands for uniform distribution:
 
@@ -95,9 +99,9 @@ The table below summarizes the information about these clusters.
 
 | Example tree   | Cluster | Size [tips] | ρ<sub>H</sub> |
 |----------------|---------|-------------|----------------|
-| [cea.nwk](genomic_clusters/cea.nwk) | CE-2024, Ceará | 86          | 0.396 |
-| [es1.nwk](genomic_clusters/es1.nwk)      | ES-I, Espírito Santo | 123         | 0.016 |
-| [am1.nwk](genomic_clusters/am1.nwk)      | AM-I, Amazonas | 258         | 0.109 |
+| [cea.nwk](https://github.com/modpath/bdeivh/tree/main/genomic_clusters/cea.nwk) | CE-2024, Ceará | 86          | 0.396 |
+| [es1.nwk](https://github.com/modpath/bdeivh/tree/main/genomic_clusters/es1.nwk)      | ES-I, Espírito Santo | 123         | 0.016 |
+| [am1.nwk](https://github.com/modpath/bdeivh/tree/main/genomic_clusters/am1.nwk)      | AM-I, Amazonas | 258         | 0.109 */
 
 
 
@@ -143,7 +147,7 @@ bdeivh_infer --help
 
 ##### On the full tree
 
-The following example estimates the parameters of the Ceará tree [cea.nwk](genomic_clusters/cea.nwk) (option `--tree`) 
+The following example estimates the parameters of the Ceará tree [cea.nwk](https://github.com/modpath/bdeivh/tree/main/genomic_clusters/cea.nwk) (option `--tree`) 
 with the BDEIVH model trained on OROV-like trees (options `--tree_type`), 
 and assuming the sampling probability is 0.396 (option `--sampling_probability`). 
 The tree's branch lengths are measured in years (option `--tree_scale`, where 1 stands for years (default) and 0 for days).
@@ -164,7 +168,7 @@ and running the inference on the subtrees (containing all the tips sampled till 
 This is achieved with the option `--temporal`.
 
 
-The following example estimates the parameters though time on the Ceará tree [cea.nwk](genomic_clusters/cea.nwk) (option `--tree`), 
+The following example estimates the parameters though time on the Ceará tree [cea.nwk](main/genomic_clusters/cea.nwk) (option `--tree`), 
 with the BDEIVH model trained on OROV-like trees (option `----tree_type`), 
 assuming the sampling probability is 0.396 (option `--sampling_probability`). 
 The tree's branch lengths are measured in years (option `--tree_scale`, where 1 stands for years (default) and 0 for days).
@@ -219,5 +223,5 @@ The genomic prediction script exports raw model quantiles.
 ## Reproduce training and evaluation
 
 Pretrained prediction starts directly from a dated tree. 
-To regenerate an estimator, follow the training/test/calibration workflows in the [tree_simulation](../tree_simulation) folder, 
-then run the DL model training/testing notebooks in the [bdeivh_training_testing](../bdeivh_training_testing) folder.
+To regenerate an estimator, follow the training/test/calibration workflows in the [tree_simulation](https://github.com/modpath/bdeivh/tree/main/tree_simulation) folder, 
+then run the DL model training/testing notebooks in the [bdeivh_training_testing](https://github.com/modpath/bdeivh/tree/main/bdeivh_training_testing) folder.
