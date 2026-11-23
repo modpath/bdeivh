@@ -4,5 +4,5 @@ ete3>=3.1.3
 numpy>=1.23.5,<2.0.0
 six>=1.16.0
 matplotlib
-treesumstats>=1.1
-scikit-learn==1.5.2
+treesumstats>=1.1.1
+scikit-learn

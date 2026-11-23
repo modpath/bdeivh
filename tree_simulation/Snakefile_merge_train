@@ -64,8 +64,8 @@ rule encode:
         mem=2000,
         qos='fast'
     threads: 1
-    singularity: "docker://evolbioinfo/python-evol:v3.8.2b"
+    singularity: "docker://evolbioinfo/bdeivh:v0.1.5"
     shell:
         """
-        python3 Phylocnn_Encoding.py -t {input.nwks} -o {output.tsv}
+        bdeivh_encode -t {input.nwks} -o {output.tsv}
         """

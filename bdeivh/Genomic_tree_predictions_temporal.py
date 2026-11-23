@@ -21,6 +21,14 @@ import warnings
 import tempfile
 import numpy as np
 import pandas as pd
+
+TARGET_COLS = ["Rvh", "Rhv", "Rhh", "d_v", "d_h", "v2h_ratio"]
+QUANTILES = (0.025, # lower
+             0.5,   # median
+             0.975) # upper
+COLS_TO_RESCALE = ["d_v", "d_h"]
+
+MODEL_DIR = os.path.join(os.path.dirname(__file__), 'models')
 from tensorflow.keras.models import model_from_json
 from keras.src.saving import serialization_lib
 
@@ -33,11 +41,6 @@ from ete3 import Tree
 warnings.filterwarnings("ignore")
 sys.setrecursionlimit(100000)
 
-TARGET_COLS = ["Rvh", "Rhv", "Rhh", "d_v", "d_h", "v2h_ratio"]
-QUANTILES = ("lower", "median", "upper")
-COLS_TO_RESCALE = ["d_v", "d_h"]
-
-MODEL_DIR = os.path.join(os.path.dirname(__file__), 'models')
 
 OROV = 'OROV'
 TT = 'TT'
@@ -157,6 +160,12 @@ def load_trained_model(model_json_file, model_weights_file):
     # Required by this Keras version to deserialize trusted Lambda layers.
     from keras.src.saving import serialization_lib
     serialization_lib.enable_unsafe_deserialization()
+
+    import builtins
+
+    # Define the missing QUANTILES globally so the Lambda function can see it
+    # (Replace with the exact quantiles used during model training)
+    builtins.QUANTILES = [0.025, 0.5, 0.975]
 
     model = model_from_json(model_json)
     model.load_weights(model_weights_file)
