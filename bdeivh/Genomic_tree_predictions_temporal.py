@@ -24,7 +24,7 @@ import pandas as pd
 from tensorflow.keras.models import model_from_json
 from keras.src.saving import serialization_lib
 
-from bdeihv.Phylocnn_Encoding import process_tree
+from bdeivh.Phylocnn_Encoding import process_tree
 
 serialization_lib.enable_unsafe_deserialization()
 
@@ -40,7 +40,7 @@ COLS_TO_RESCALE = ["d_v", "d_h"]
 MODEL_DIR = os.path.join(os.path.dirname(__file__), 'models')
 
 OROV = 'OROV'
-TRANSMISSION = 'TRANSMISSION'
+TT = 'TT'
 
 
 def genomic_tree_rescaling(original_tree, tree_scale):
@@ -473,18 +473,18 @@ def main():
     parser = argparse.ArgumentParser(
         description="Prepare a genomic tree and predict epidemiological parameters with prediction intervals."
     )
-    parser.add_argument(
-        "-ts", "--tree_scale", default=1, type=int,
-        help="Date scale used in the supplied tree: 0 = days, 1 = years."
-    )
     parser.add_argument("-t", "--tree", required=True, help="Tree file in .nwk format.")
     parser.add_argument(
         "-p", "--sampling_probability", required=True, type=float,
         help="Sampling probability p."
     )
     parser.add_argument(
-        "--tree_type", default=OROV, type=str, choices=(OROV, TRANSMISSION),
-        help="Type of tree: OROV = Oropouche-like trees, TRANSMISSION = perfectly resolved transmission trees."
+        "-ts", "--tree_scale", default=1, type=int,
+        help="Date scale used in the supplied tree: 0 = days, 1 = years."
+    )
+    parser.add_argument(
+        "--tree_type", default=OROV, type=str, choices=(OROV, TT),
+        help="Type of tree: OROV = Oropouche-like trees, TT = perfectly resolved transmission trees."
     )
     parser.add_argument(
         "--keep_intermediate", action="store_true",
