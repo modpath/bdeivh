@@ -17,6 +17,7 @@ Output columns:
 import os
 import sys
 import argparse
+import json
 import warnings
 import tempfile
 import numpy as np
@@ -173,7 +174,33 @@ def load_trained_model(model_json_file, model_weights_file):
     return model
 
 
-def predictions_to_dataframe(pred, resc_factor_real):
+def load_cqr(model_weights_file):
+    """Read per-target interval corrections for the selected model."""
+    weights_path = os.fspath(model_weights_file)
+    model_prefix = weights_path[:-len(".weights.h5")]
+    calibration_path = f"{model_prefix}.cqr.json"
+    try:
+        with open(calibration_path, encoding="utf-8") as calibration_file:
+            calibration = json.load(calibration_file)
+    except FileNotFoundError as error:
+        raise FileNotFoundError(
+            f"CQR file missing: {calibration_path}. Run the calibration notebook "
+            "for this model, or use --uncalibrated for raw intervals."
+        ) from error
+
+    q_hat = calibration.get("q_hat", {})
+    if (calibration.get("model_name") != os.path.basename(model_prefix)
+            or calibration.get("quantiles") != list(QUANTILES)
+            or set(q_hat) != set(TARGET_COLS)):
+        raise ValueError(f"CQR metadata does not match the model: {calibration_path}")
+
+    corrections = np.array([q_hat[target] for target in TARGET_COLS], dtype=float)
+    if not np.isfinite(corrections).all():
+        raise ValueError(f"Non-finite CQR correction: {calibration_path}")
+    return corrections
+
+
+def predictions_to_dataframe(pred, resc_factor_real, q_hat=None):
     """Convert model output to a dataframe with lower/median/upper columns."""
     expected_outputs = len(TARGET_COLS) * len(QUANTILES)
 
@@ -187,6 +214,11 @@ def predictions_to_dataframe(pred, resc_factor_real):
         )
 
     pred = pred.reshape(-1, len(TARGET_COLS), len(QUANTILES))
+
+    if q_hat is not None:
+        pred = pred.astype(float, copy=True)
+        pred[:, :, 0] -= q_hat
+        pred[:, :, 2] += q_hat
 
     pred_cols = []
     for target in TARGET_COLS:
@@ -205,7 +237,11 @@ def predictions_to_dataframe(pred, resc_factor_real):
     return predicted
 
 
-def predict_parameters(encoded_file, sampling_probability, model_json_file, model_weights_file):
+def predict_parameters(
+    encoded_file, sampling_probability, model_json_file, model_weights_file,
+    *, uncalibrated=False,
+):
+    q_hat = None if uncalibrated else load_cqr(model_weights_file)
     enc_real, resc_factor_real = load_encoded_tree(encoded_file)
     enc_real = add_sampling_probability(enc_real, sampling_probability)
     enc_real = encode_pad_0s_rootage_single(enc_real)
@@ -213,7 +249,7 @@ def predict_parameters(encoded_file, sampling_probability, model_json_file, mode
     model = load_trained_model(model_json_file, model_weights_file)
     pred = model.predict(enc_real)
 
-    return predictions_to_dataframe(pred, resc_factor_real)
+    return predictions_to_dataframe(pred, resc_factor_real, q_hat)
 
 
 
@@ -330,6 +366,7 @@ def predict_tree_object(
     model,
     workdir,
     prefix,
+    q_hat=None,
 ):
     """Encode one ETE tree and predict its epidemiological parameters."""
     tree_file = os.path.join(workdir, f"{prefix}.nwk")
@@ -343,7 +380,7 @@ def predict_tree_object(
     enc_real = encode_pad_0s_rootage_single(enc_real)
 
     pred = model.predict(enc_real, verbose=0)
-    return predictions_to_dataframe(pred, resc_factor_real)
+    return predictions_to_dataframe(pred, resc_factor_real, q_hat)
 
 
 def encode_tree(tree_file: str, encoded_file: str):
@@ -361,6 +398,8 @@ def predict_every_n_days(
     model_dir=MODEL_DIR,
     tree_type=OROV,
     include_final=True,
+    *,
+    uncalibrated=False,
 ):
     """Predict BDEIVH parameters from sequential time slices of one tree.
 
@@ -435,15 +474,19 @@ def predict_every_n_days(
             model_label, model_json, model_weights = model_info
 
             if model_label not in model_cache:
-                model_cache[model_label] = load_trained_model(
+                q_hat = None if uncalibrated else load_cqr(model_weights)
+                model = load_trained_model(
                     model_json_file=model_json,
                     model_weights_file=model_weights,
                 )
+                model_cache[model_label] = model, q_hat
 
+            model, q_hat = model_cache[model_label]
             predicted = predict_tree_object(
                 tree=cut_tree,
                 sampling_probability=sampling_probability,
-                model=model_cache[model_label],
+                model=model,
+                q_hat=q_hat,
                 workdir=workdir,
                 prefix=f"slice_{idx:04d}",
             )
@@ -512,6 +555,11 @@ def main():
         help="Directory containing pretrained models."
     )
 
+    parser.add_argument(
+        "--uncalibrated", action="store_true",
+        help="Use raw model quantiles without CQR correction.",
+    )
+
     args = parser.parse_args()
 
     base_name = os.path.splitext(args.tree)[0]
@@ -533,6 +581,7 @@ def main():
             model_dir=args.model_dir,
             tree_type=args.tree_type,
             include_final=True,
+            uncalibrated=args.uncalibrated,
         )
         temporal_predictions.to_csv(prediction_output, index=False)
         print(temporal_predictions.to_string(index=False))
@@ -565,6 +614,7 @@ def main():
         sampling_probability=args.sampling_probability,
         model_json_file=model_json,
         model_weights_file=model_weights,
+        uncalibrated=args.uncalibrated,
     )
 
     print_predictions_summary(predicted)
