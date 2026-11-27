@@ -6,8 +6,9 @@ The pretrained estimator accepts a single cluster with 30–350 sampled tips and
 
 ## Associated manuscript
 
-Ighor Arantes, Gonzalo Bello, Felipe Gomes Naveca, Edson Delatorre, Antonio Silva Lima Neto, Sebastian Duchene and Anna Zhukova. *Deep Learning-based Phylodynamic Inference of Oropouche Virus Transmission Dynamics in Brazil Between 2023 and 2025*. 
+Ighor Arantes, Gonzalo Bello, Felipe Gomes Naveca, Edson Delatorre, Antonio Silva Lima Neto, Sebastian Duchene and Anna Zhukova. *Deep Learning-based Phylodynamic Inference of Oropouche Virus Transmission Dynamics in Brazil Between 2023 and 2025*. [_medRxiv_ 2026.11.24.26368826](https://doi.org/10.64898/2026.11.24.26368826)
 
+[![DOI:10.64898/2026.11.24.26368826](https://zenodo.org/badge/DOI/10.64898/2026.11.24.26368826.svg)](https://doi.org/10.64898/2026.11.24.26368826)
 [![PyPI version](https://badge.fury.io/py/bdeivh.svg)](https://pypi.org/project/bdeivh/)
 [![Docker pulls](https://img.shields.io/docker/pulls/evolbioinfo/bdeivh)](https://hub.docker.com/r/evolbioinfo/bdeivh/tags)
 
